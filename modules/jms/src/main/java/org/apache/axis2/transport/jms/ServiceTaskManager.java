@@ -41,6 +41,7 @@ import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.Session;
+import javax.jms.TransactionRolledBackException;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
@@ -765,6 +766,9 @@ public class ServiceTaskManager {
                     consumerRetryCount = 0;
                     return msg;
                 }
+            } catch (TransactionRolledBackException e) {
+                log.warn("Session transaction has been rolled back. Recreating JMS session.");
+                recreateSession();
             } catch (IllegalStateException e) {
                 // probably the consumer (shared) was closed.. which is still ok.. as we didn't read
                 connectionReceivedError = true;
@@ -788,6 +792,26 @@ public class ServiceTaskManager {
                 logError("Error receiving message for service : " + serviceName, e);
             }
             return null;
+        }
+
+        private synchronized void recreateSession() {
+            if (log.isDebugEnabled()) {
+                log.debug("Closing dead JMS consumer and session.");
+            }
+
+            if (consumer != null) {
+                closeConsumer(true);
+            }
+            if (session != null) {
+                closeSession(true);
+            }
+
+            session  = createSession();
+            consumer = createConsumer();
+
+            if (log.isDebugEnabled()) {
+                log.debug("JMS session recreated successfully.");
+            }
         }
 
         /**
@@ -1355,7 +1379,7 @@ public class ServiceTaskManager {
             }
 
             try {
-                context = getInitialContext();
+                context = getInitialContext(jmsProperties);
                 return
                     JMSUtils.lookup(context, UserTransaction.class, getUserTransactionJNDIName());
             } catch (NamingException e) {
@@ -1366,7 +1390,7 @@ public class ServiceTaskManager {
         
         if (sharedUserTransaction == null) {
             try {
-                context = getInitialContext();
+                context = getInitialContext(jmsProperties);
                 sharedUserTransaction =
                     JMSUtils.lookup(context, UserTransaction.class, getUserTransactionJNDIName());
                 if (log.isDebugEnabled()) {
