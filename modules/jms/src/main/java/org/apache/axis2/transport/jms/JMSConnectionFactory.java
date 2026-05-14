@@ -74,6 +74,9 @@ public class JMSConnectionFactory {
     private Map<Connection, SessionWrapper> sharedSessionWrapperMapPerConn = new ConcurrentHashMap<>();
     private Map<SessionWrapper, MessageProducer> sharedMessageProducerMap = new ConcurrentHashMap<>();
 
+    /** JNDIName -> Destination cache to avoid a broker resident JNDI lookup per each send */
+    private final ConcurrentHashMap<String, Destination> destinationCache = new ConcurrentHashMap<>();
+
     public int getMaxSharedConnectionCount() {
         return maxSharedConnectionCount;
     }
@@ -237,6 +240,24 @@ public class JMSConnectionFactory {
      * Close all connections, sessions etc.. and stop this connection factory
      */
     public synchronized void stop() {
+        // Close producer cache connections held in sharedConnectionMap. Without this, every
+        // CAPP redeploy leaks up to maxSharedConnectionCount JMS Connections.
+        Iterator<Map.Entry<Integer, Connection>> it = sharedConnectionMap.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, Connection> entry = it.next();
+            Connection connection = entry.getValue();
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (JMSException e) {
+                    log.warn("Error closing shared connection " + entry.getKey()
+                            + " of JMS CF : " + JMSUtils.maskURLPasswordAndCredentials(name), e);
+                }
+            }
+            it.remove();
+        }
+        destinationCache.clear();
+
         if (sharedConnection != null) {
             try {
             	sharedConnection.close();
@@ -302,15 +323,43 @@ public class JMSConnectionFactory {
      * @return JMS Destination for the given JNDI name or null
      */
     public Destination getDestination(String destinationName, String destinationType) {
+        if (destinationName == null) {
+            // Mirror the legacy contract of JMSUtils.lookupDestination, and avoid the
+            // NullPointerException ConcurrentHashMap.computeIfAbsent throws on null keys.
+            return null;
+        }
+        // Cache key includes destinationType because JMSUtils.lookupDestination's fallback
+        // path resolves unbound names differently for queue vs topic.
+        String cacheKey = (destinationType == null ? "" : destinationType) + ":" + destinationName;
         try {
-            return JMSUtils.lookupDestination(context, destinationName, destinationType);
-        } catch (NamingException e) {
+            // When multiple threads request the same destination for the first time,
+            // only one JNDI lookup is performed. If the lookup returns null, the result
+            // is not cached, allowing unbound names to be retried.
+            return destinationCache.computeIfAbsent(cacheKey, k -> {
+                try {
+                    return JMSUtils.lookupDestination(context, destinationName, destinationType);
+                } catch (NamingException ne) {
+                    throw new CachedLookupException(ne);
+                }
+            });
+        } catch (CachedLookupException wrapper) {
             handleException("Error looking up the JMS destination with name " + destinationName
-                    + " of type " + destinationType, e);
+                    + " of type " + destinationType, (NamingException) wrapper.getCause());
         }
 
         // never executes but keeps the compiler happy
         return null;
+    }
+
+    /**
+     * Wraps a {@link NamingException} from the cached destination lookup so it can be
+     * handled by {@link #getDestination} after {@code computeIfAbsent} returns.
+     */
+    private static final class CachedLookupException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        CachedLookupException(Throwable cause) {
+            super(cause);
+        }
     }
 
     /**
