@@ -469,23 +469,23 @@
             </releases>
         </pluginRepository>
     </pluginRepositories>
-    <distributionManagement>
-        <!--repository>
-            <id>wso2-maven2-repository</id>
-            <name>WSO2 Maven2 Repository</name>
-            <url>scp://dist.wso2.org/home/httpd/dist.wso2.org/maven2/</url>
-        </repository-->
-        <repository>
-            <id>nexus-releases</id>
-            <name>WSO2 Release Distribution Repository</name>
-            <url>https://maven.wso2.org/nexus/service/local/staging/deploy/maven2/</url>
-        </repository>
-        <snapshotRepository>
-            <id>wso2.snapshots</id>
-            <name>Apache Snapshot Repository</name>
-            <url>https://maven3-upgrade.wso2.org/nexus/repository/snapshots/</url>
-        </snapshotRepository>
-    </distributionManagement>
+<!--    <distributionManagement>-->
+<!--        &lt;!&ndash;repository>-->
+<!--            <id>wso2-maven2-repository</id>-->
+<!--            <name>WSO2 Maven2 Repository</name>-->
+<!--            <url>scp://dist.wso2.org/home/httpd/dist.wso2.org/maven2/</url>-->
+<!--        </repository&ndash;&gt;-->
+<!--        <repository>-->
+<!--            <id>nexus-releases</id>-->
+<!--            <name>WSO2 Release Distribution Repository</name>-->
+<!--            <url>https://maven.wso2.org/nexus/service/local/staging/deploy/maven2/</url>-->
+<!--        </repository>-->
+<!--        <snapshotRepository>-->
+<!--            <id>wso2.snapshots</id>-->
+<!--            <name>Apache Snapshot Repository</name>-->
+<!--            <url>https://maven3-upgrade.wso2.org/nexus/repository/snapshots/</url>-->
+<!--        </snapshotRepository>-->
+<!--    </distributionManagement>-->
     <build>
         <extensions>
             <extension>
